@@ -30,6 +30,11 @@
   // How long a post waits for Tenor to rate a GIF picked without a rating.
   const CHECK_TIMEOUT_MS = 5000;
   const NO_FAVORITES = 'No favorites yet. Point at a GIF and click its star.';
+  // How long a server refusal (HTTP 400) of a verified G-rated GIF is
+  // remembered, or until a GIF goes through, so the picker can point at the
+  // issue tracking it instead of leaving the next attempt to fail quietly.
+  const BLOCKED_MEMORY_MS = 24 * 60 * 60 * 1000;
+  const BLOCKED_ISSUE = 'https://github.com/rayytor/desktop_gifs/issues/93';
 
   const PICKER_CSS = `
     :host { all: initial; position: fixed; z-index: 2147483647; }
@@ -74,6 +79,20 @@
     }
     .update button:hover { background: var(--field); }
     .update a:focus-visible, .update button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+    .blocked {
+      flex: none; display: flex; align-items: center; gap: 8px; padding: 6px 8px 6px 12px;
+      border-bottom: 1px solid var(--line); color: var(--err);
+    }
+    .blocked[hidden] { display: none; }
+    .blocked span { flex: 1; min-width: 0; }
+    .blocked a { color: var(--accent); font-weight: 500; text-decoration: none; }
+    .blocked a:hover { text-decoration: underline; }
+    .blocked button {
+      flex: none; width: 24px; height: 24px; padding: 0; border: 0; border-radius: 50%;
+      background: transparent; color: var(--muted); font: 16px/1 Arial, sans-serif; cursor: pointer;
+    }
+    .blocked button:hover { background: var(--field); }
+    .blocked a:focus-visible, .blocked button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
     .status { flex: none; padding: 6px 12px 0; color: var(--muted); }
     .status:empty { display: none; }
     .status[data-kind="error"] { color: var(--err); }
@@ -176,7 +195,7 @@
 
   // ------------------------------------------------------------------ picker
 
-  const picker = { open: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null, favorites: [], showingFavorites: false, updateAsked: false };
+  const picker = { open: false, host: null, anchor: null, box: null, els: null, seq: 0, timer: 0, gifs: [], nonce: null, favorites: [], showingFavorites: false, updateAsked: false, blockedAt: 0, dismissedBlockedAt: 0 };
 
   function buildPicker() {
     const host = document.createElement('div');
@@ -234,6 +253,24 @@
     updateClose.setAttribute('aria-label', 'Hide until the next version');
     update.append(updateText, updateLink, updateClose);
 
+    // Shown while a recent server refusal is remembered; see showBlocked.
+    const blocked = document.createElement('div');
+    blocked.className = 'blocked';
+    blocked.hidden = true;
+    const blockedText = document.createElement('span');
+    const blockedLink = document.createElement('a');
+    blockedLink.href = BLOCKED_ISSUE;
+    blockedLink.target = '_blank';
+    blockedLink.rel = 'noopener noreferrer';
+    blockedLink.textContent = '#93';
+    blockedText.append('YouTube rejected your last GIF comment (HTTP 400). See ', blockedLink, ' for what is known so far. Nothing was posted.');
+    const blockedClose = document.createElement('button');
+    blockedClose.type = 'button';
+    blockedClose.textContent = '×';
+    blockedClose.title = 'Hide this notice';
+    blockedClose.setAttribute('aria-label', 'Hide this notice');
+    blocked.append(blockedText, blockedClose);
+
     const status = document.createElement('div');
     status.className = 'status';
     status.setAttribute('role', 'status');
@@ -241,7 +278,7 @@
     const grid = document.createElement('div');
     grid.className = 'grid';
 
-    panel.append(search, update, status, grid);
+    panel.append(search, update, blocked, status, grid);
     root.append(style, panel);
 
     input.addEventListener('input', () => {
@@ -269,8 +306,15 @@
       input.focus();
     });
 
+    blockedClose.addEventListener('click', () => {
+      blocked.hidden = true;
+      picker.dismissedBlockedAt = picker.blockedAt;
+      chrome.storage.local.set({ dismissedGifBlockedAt: picker.blockedAt }).catch(() => {});
+      input.focus();
+    });
+
     picker.host = host;
-    picker.els = { panel, input, status, grid, favTab, update, updateText, updateLink };
+    picker.els = { panel, input, status, grid, favTab, update, updateText, updateLink, blocked };
   }
 
   // A ZIP-installed extension does not update itself, so the picker says when
@@ -293,6 +337,15 @@
     updateText.textContent = `Desktop GIFs ${release.version} is out.`;
     updateLink.href = release.url;
     update.hidden = false;
+  }
+
+  // The remembered refusal is shown while it is recent and has not been
+  // dismissed; a newer refusal brings the notice back.
+  const recentlyBlocked = () => picker.blockedAt > 0 && Date.now() - picker.blockedAt < BLOCKED_MEMORY_MS;
+
+  function showBlocked() {
+    if (!picker.els) return;
+    picker.els.blocked.hidden = !recentlyBlocked() || picker.blockedAt === picker.dismissedBlockedAt;
   }
 
   function setStatus(text, kind) {
@@ -325,6 +378,7 @@
     box.append(picker.host);
     picker.host.showPopover();
     place();
+    showBlocked();
     picker.els.input.focus();
     load(picker.els.input.value);
     showUpdate();
@@ -437,9 +491,26 @@
     else for (const star of picker.els.grid.querySelectorAll('.star')) setStar(star, picker.gifs[Number(star.dataset.index)]);
   }
 
+  // The remembered refusal and the notice's dismissal, read on load and on
+  // every change, so every tab shows the same notice.
+  function useBlocked(stored) {
+    picker.blockedAt = typeof stored === 'number' ? stored : 0;
+    showBlocked();
+  }
+
+  function useDismissedBlocked(stored) {
+    picker.dismissedBlockedAt = typeof stored === 'number' ? stored : 0;
+    showBlocked();
+  }
+
   chrome.storage.local.get('favorites').then((items) => useFavorites(items.favorites));
+  chrome.storage.local.get('gifBlockedAt').then((items) => useBlocked(items.gifBlockedAt)).catch(() => {});
+  chrome.storage.local.get('dismissedGifBlockedAt').then((items) => useDismissedBlocked(items.dismissedGifBlockedAt)).catch(() => {});
   const onStorage = (changes, area) => {
-    if (area === 'local' && changes.favorites) useFavorites(changes.favorites.newValue);
+    if (area !== 'local') return;
+    if (changes.favorites) useFavorites(changes.favorites.newValue);
+    if (changes.gifBlockedAt) useBlocked(changes.gifBlockedAt.newValue);
+    if (changes.dismissedGifBlockedAt) useDismissedBlocked(changes.dismissedGifBlockedAt.newValue);
   };
   chrome.storage.onChanged.addListener(onStorage);
 
@@ -734,6 +805,17 @@
       let result = await Promise.race([settled, sleep(SUBMIT_GRACE_MS).then(() => null)]);
       if (!result && seen) result = await Promise.race([settled, sleep(RESULT_TIMEOUT_MS).then(() => null)]);
 
+      // Only a verified G-rated GIF turned down by the server counts as the
+      // known desktop failure; an unrated one may have been refused for its
+      // rating. Shared with every tab through storage, and cleared by a GIF
+      // that goes through.
+      if (result && result.kind === 'blocked' && rating === 'G') {
+        picker.blockedAt = Date.now();
+        chrome.storage.local.set({ gifBlockedAt: picker.blockedAt }).catch(() => {});
+      } else if (result && result.ok) {
+        picker.blockedAt = 0;
+        chrome.storage.local.remove('gifBlockedAt').catch(() => {});
+      }
       if (result && result.ok) {
         detach(box, false);
         return;

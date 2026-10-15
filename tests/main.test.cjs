@@ -129,6 +129,21 @@ test('a potential later success does not trigger an automatic second submission'
   assert.equal(h.warnings.length, 1);
 });
 
+test('every verdict names its kind so a server refusal can be told apart', async () => {
+  for (const [reply, status, kind] of [
+    [success, 200, 'posted'],
+    [{ actions: [{ showErrorAction: {} }] }, 200, 'gif'],
+    [invalid, 400, 'blocked'],
+    [{ error: { status: 'PERMISSION_DENIED', message: 'Denied.' } }, 403, 'rejected'],
+    ['Service unavailable', 503, 'uncertain'],
+  ]) {
+    const h = hook(reply, status);
+    h.arm();
+    await h.send();
+    assert.equal(h.result().kind, kind);
+  }
+});
+
 test('nested response commands expose their error text', async () => {
   const h = hook({ onResponseReceivedEndpoints: [{ commandExecutorCommand: { commands: [{ showErrorAction: { errorMessage: { messageRenderer: { text: { simpleText: 'Please sign in again.' } } } } }] } }] });
   h.arm();

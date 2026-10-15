@@ -194,7 +194,9 @@
         actionStatus: verdict.actionStatus,
       }));
     }
-    toContent({ type: 'result', nonce, ok: verdict.kind === 'posted', error });
+    // The kind lets the content script tell a server refusal apart from the
+    // other failures, so it can remember an apparent desktop block.
+    toContent({ type: 'result', nonce, ok: verdict.kind === 'posted', kind: verdict.kind, error });
     return response;
   }
 

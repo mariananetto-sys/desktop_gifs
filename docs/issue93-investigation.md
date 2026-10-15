@@ -1,6 +1,6 @@
 # Issue #93: server evidence and submission safeguards
 
-Investigated on 14 October 2026. This branch does **not restore GIF posting**.
+Investigated on 14–15 October 2026. This branch does **not restore GIF posting**.
 The latest official base checked was `721f84313801102c3b8596590b6a7ce48952fbbf`
 (v0.1.8). No user account was accessed and no real comment was published.
 
@@ -24,6 +24,39 @@ These are public reproduction reports, not an independent authenticated
 capture. The precise server rule and order of validation remain unknown.
 An `INVALID_ARGUMENT` response alone cannot distinguish client capability,
 account eligibility, rollout, attachment validation or another restriction.
+
+## Later public reports (15 October 2026)
+
+- A real mobile-web test: the hook on `m.youtube.com`, client MWEB, sends
+  `create_comment` and is refused in the same way, HTTP 400 `INVALID_ARGUMENT`
+  ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6179017241)).
+- A request-shape matrix: desktop, mobile web and YouTube Studio all refuse
+  `tenorId` with HTTP 400; a community-post label sent from youtube.com is
+  accepted but apparently ignored; an uploaded image is accepted and then
+  dropped; an edit carrying `tenorId` is accepted and the GIF is dropped
+  ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6197055309)).
+- An inspection of the desktop site's own bundle, web client
+  `2.20261014.01.00`: it contains no `tenor`/`tenorId` code for creating
+  comments, only strings for viewing GIFs; image attachments have their own
+  view model and appear to be gated per account
+  ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6190716702)).
+- A proposal to pass off the request as mobile web by rewording
+  `context.client.clientName` ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6198318144));
+  the real MWEB test above already saw that client refused the same way, and
+  client-attestation spoofing has been reported as unworkable for the app
+  clients ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6187019637)).
+- Reports of a full GIF shutdown across mobile and desktop
+  ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6182510037)),
+  and one unverified sighting of a recent GIF comment
+  ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6201544486)).
+  No accepted submission from this extension was independently captured.
+
+None of these reports supplies a verified client-side fix. The `Unsafe attempt
+to load URL https://media.tenor.com/...` entries that Chromium lists for the
+extension mark inserting preview images, are local to the browser, and are not
+part of the comment request; a paste combining them with the `kind: "blocked"`
+diagnostics ([comment](https://github.com/rayytor/desktop_gifs/issues/93#issuecomment-6202507487))
+matches the original report's combination, not a second failure.
 
 ## Request behavior verified in source and fixtures
 
@@ -65,6 +98,9 @@ client identity or integrity attestation was changed.
 ## Independent defects addressed
 
 - Repeated deterministic rejections: one native request per submission.
+- A 400 refusal of a verified G-rated GIF is remembered for a day, or until a
+  GIF goes through, and the picker links to this issue; an unrated GIF's
+  refusal is not treated as the known desktop failure. No automatic retry.
 - Network loss/cancellation after dispatch: publication remains uncertain.
 - Contradictory success/error responses: never confirm success.
 - Diagnostics: omit server text and arbitrary status strings that could echo
@@ -82,8 +118,11 @@ Search, favorites and the picker remain in the existing implementation.
 Run `node --test tests/main.test.cjs tests/sw.test.cjs` and
 `python tests/picker.browser.py --browser chromium`. All API responses, page
 fixtures and browser publication acknowledgements in these suites are
-simulated. Chromium MV3 loading can be checked with a separate disposable
-profile; it proves script installation, not YouTube posting.
+simulated. The server-refusal workflows are covered: the verdict kind, keeping
+only a verified G-rated refusal, the picker notice and its dismissal, a stale
+stamp after a day, and clearing when a GIF goes through. Chromium MV3 loading
+can be checked with a separate disposable profile; it proves script
+installation, not YouTube posting.
 
 ReadableStream bodies in `init.body` and unknown request compression/schema
 changes remain compatibility risks in the interception algorithm; the observed

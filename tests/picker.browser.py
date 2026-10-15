@@ -298,6 +298,60 @@ class PickerTests(unittest.TestCase):
         self.assertFalse(submit.is_enabled())
         self.assertEqual(self.page.evaluate('stats.posts'), [])
 
+    def test_blocked_gif_is_remembered_and_the_picker_says_so_until_one_goes_through(self):
+        notice = self.page.locator('.blocked')
+        submit = self.page.locator('#modal-box #submit-button button')
+        self.open_picker()
+        self.assertFalse(notice.is_visible())
+        self.page.locator('.tile').first.click()
+        self.page.evaluate("window.postKind = 'blocked'; window.postFailure = 'YouTube rejected this GIF comment (HTTP 400, INVALID_ARGUMENT).'")
+        submit.click()
+        self.page.wait_for_function("document.querySelector('.gcfy-attachment-status').textContent.includes('HTTP 400')")
+        blocked_at = self.page.evaluate('storedItems.gifBlockedAt')
+        self.assertIsInstance(blocked_at, int)
+
+        self.open_picker()
+        notice.wait_for(state='visible')
+        self.assertEqual(notice.get_by_role('link', name='#93').get_attribute('href'), 'https://github.com/rayytor/desktop_gifs/issues/93')
+        notice.get_by_role('button', name='Hide this notice').click()
+        self.assertFalse(notice.is_visible())
+        self.assertEqual(self.page.evaluate('storedItems.dismissedGifBlockedAt'), blocked_at)
+        self.page.keyboard.press('Escape')
+
+        # A GIF that goes through clears the remembered refusal everywhere.
+        self.page.evaluate('window.postKind = undefined; window.postFailure = undefined')
+        submit.click()
+        self.page.locator('#modal-box .gcfy-attachment').wait_for(state='detached')
+        self.assertIsNone(self.page.evaluate('storedItems.gifBlockedAt ?? null'))
+
+        self.open_picker()
+        self.assertFalse(notice.is_visible())
+        self.assert_modal_open()
+
+    def test_a_remembered_block_is_shown_for_a_day_and_stale_stamps_are_dropped(self):
+        notice = self.page.locator('.blocked')
+        self.page.evaluate('window.storedItems.gifBlockedAt = Date.now()')
+        self.inject_newer_copy()
+        self.open_picker()
+        notice.wait_for(state='visible')
+        self.page.keyboard.press('Escape')
+
+        self.page.evaluate('window.storedItems.gifBlockedAt = Date.now() - 25 * 60 * 60 * 1000')
+        self.inject_newer_copy()
+        self.open_picker()
+        self.assertFalse(notice.is_visible())
+        self.assert_modal_open()
+
+    def test_a_block_of_an_unrated_gif_is_not_kept_as_the_server_refusal(self):
+        self.page.evaluate("window.unrated = true; window.checkFailure = 'Tenor returned HTTP 503.'")
+        self.open_picker()
+        self.page.locator('.tile').first.click()
+        self.page.evaluate("window.postKind = 'blocked'; window.postFailure = 'YouTube rejected this GIF comment (HTTP 400, INVALID_ARGUMENT).'")
+        self.page.locator('#modal-box #submit-button button').click()
+        self.page.wait_for_function("document.querySelector('.gcfy-attachment-status').textContent.includes('HTTP 400')")
+        self.assertEqual([a['ratedG'] for a in self.page.evaluate('stats.arms')], [False])
+        self.assertIsNone(self.page.evaluate('storedItems.gifBlockedAt ?? null'))
+
     def test_cancel_during_rating_check_prevents_submission(self):
         self.page.evaluate('window.unrated = true; window.delayCheck = true')
         editor = self.page.locator('#modal-box #contenteditable-root')

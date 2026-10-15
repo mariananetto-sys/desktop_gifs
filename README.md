@@ -122,7 +122,7 @@ To keep a GIF, point at it and click the star in its corner. The **★** button 
 | "The page hook is not running" or "The extension was reloaded" | Refresh the YouTube tab. |
 | "The GIF submission was not confirmed" | Check whether the comment exists before submitting again. A missing acknowledgement does not prove it was not published. |
 | The post fails | Read the result before submitting again. For a network failure or missing confirmation, check whether the comment exists first. |
-| "YouTube rejected this GIF comment" | See [#93](https://github.com/rayytor/desktop_gifs/issues/93). This build sends the request once, including for a G-rated GIF. It does not restore server acceptance. Your text and GIF stay available after a rejection. |
+| "YouTube rejected this GIF comment" | See [#93](https://github.com/rayytor/desktop_gifs/issues/93). This build sends the request once, including for a G-rated GIF, and does not restore server acceptance. A 400 refusal of a G-rated GIF is remembered for a day, or until a GIF goes through, and the picker links to that issue while it is. Your text and GIF stay available after a rejection. |
 | "YouTube does not accept this GIF" | YouTube looked the GIF up and will not take it. Pick a different GIF. |
 | "YouTube only takes GIFs that Tenor rates G" | The GIF has another rating on Tenor. The extension checks a pasted link when you pick it, and a favorite or a GIF without a rating just before posting. Pick a different GIF. |
 | "Checking the GIF…" | The GIF was picked without a rating, so the extension asks Tenor for it before posting. This takes at most five seconds; if Tenor does not answer, the comment is posted anyway. |
@@ -141,7 +141,7 @@ If posting keeps failing, look for **Desktop GIFs: comment not confirmed** in th
 
 - **Unofficial.** This project is not affiliated with YouTube, Google or Tenor. It sends a field that YouTube's desktop site does not use itself, so it can stop working whenever YouTube changes something, and using it is at your own risk under YouTube's Terms of Service.
 - **Tenor only.** YouTube's GIF comments take Tenor GIFs, so a GIF file from your computer cannot be posted.
-- **Desktop GIF posting remains unverified.** On 14 October 2026 users and the maintainer reported HTTP 400 INVALID_ARGUMENT for desktop GIF comments and replies; see [#93](https://github.com/rayytor/desktop_gifs/issues/93). This build removes automatic repeat submissions. It does not change the attachment protocol or prove YouTube accepts GIFs. A success acknowledgement alone does not prove persistence or visibility to other visitors.
+- **Desktop GIF posting remains unverified.** On 14 October 2026 users and the maintainer reported HTTP 400 INVALID_ARGUMENT for desktop GIF comments and replies; see [#93](https://github.com/rayytor/desktop_gifs/issues/93). This build removes automatic repeat submissions and remembers a 400 refusal of a G-rated GIF for a day, or until one goes through, linking the picker to that issue. It does not change the attachment protocol or prove YouTube accepts GIFs. A success acknowledgement alone does not prove persistence or visibility to other visitors.
 - **G-rated GIFs only.** YouTube turns down every GIF that Tenor does not rate G, so the picker shows only those, and a pasted link to any other GIF is not offered.
 - **Search depends on Tenor's website.** Tenor closed its public API in June 2026. Search and ratings come from the API that tenor.com itself uses, with the key its pages carry, and fall back to the results in Tenor's web pages, which have no ratings. Either can break when Tenor changes its site.
 - **GIFs only.** Stickers and still images are left out of the results.
@@ -165,7 +165,7 @@ There is no build step and there are no dependencies: the `extension` folder is 
 
 - **YouTube, Tenor and GitHub, nothing else:** `youtube.com`, where it adds the button; for search `tenor.com` and Tenor's API at `tenor.googleapis.com`; and, at most once a day when the picker opens, this repository's latest release at `api.github.com`, to say when a new version is out.
 - **Nothing collected.** No analytics, no account.
-- **Favorites stay in your browser.** They are kept in the extension's own local storage and are not sent anywhere. So are the key Tenor's pages give out for its API, and the last release version seen.
+- **Favorites stay in your browser.** They are kept in the extension's own local storage and are not sent anywhere. So are the key Tenor's pages give out for its API, the last release version seen, and when a G-rated GIF comment was last refused by the server.
 - **Search goes to Tenor without your cookies**, and GIF previews load from Tenor's media servers. The release check goes to GitHub without cookies too.
 - **Your YouTube credentials are never read.** YouTube's own page sends the comment.
 
